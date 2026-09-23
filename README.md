@@ -20,11 +20,11 @@ Cloudflare Workers + D1 の小さなJSONセーブ保管APIと管理ページで�
 ## API
 
 - `POST /v1/users` `{ "project_id": "my-game", "registration_key": "<64 hex chars>" }` → `{ "user_id", "save_id", "write_token" }`。同じプロジェクトと登録キーの再試行は同じIDとtokenを返します。登録キーと書き込みtokenのハッシュ以外は保存しません。
-- `PUT /v1/saves/:save_id` `Authorization: Bearer <write_token>` と `{ "data": {}, "revision": 1 }`。新しいrevisionを保存します。同revisionかつ同じJSONは成功し、古いrevisionまたは内容の異なる同revisionは `409` です。
-- `GET /v1/admin/saves?project_id=my-game&cursor=<save_id>` と `GET /v1/admin/saves/:save_id` はCloudflare AccessのJWTが必要です。Workerは `Cf-Access-Jwt-Assertion`（または `CF_Authorization` cookie）を検証し、Accessの入口を通らないworkers.dev直アクセスも拒否します。ページあたり最大50件。詳細応答には `data` を含みます。
+- `PUT /v1/saves/:save_id` `Authorization: Bearer <write_token>` と `{ "data": {}, "revision": 1, "screenshot": { "url": "https://drop.tsukumistudio.com/YYYY/MM/DD/<32桁hex>.jpg", "captured_at": "2026-09-23T12:34:56Z" } }`。`screenshot` は省略可能です。省略すると登録済み画像を保ち、`null` を指定すると削除します。MornDropが返す画像URLのみ受け付け、撮影時刻はUTC秒精度です。スクリーンショットはゲームデータと別のメタデータとして保存します。新しいrevisionを保存します。同revisionの再試行はJSONと明示されたスクリーンショットが一致する場合に成功し、古いrevisionまたは異なる内容の同revisionは `409` です。
+- `GET /v1/admin/saves?project_id=my-game&cursor=<save_id>` と `GET /v1/admin/saves/:save_id` はCloudflare AccessのJWTが必要です。Workerは `Cf-Access-Jwt-Assertion`（または `CF_Authorization` cookie）を検証し、Accessの入口を通らないworkers.dev直アクセスも拒否します。ページあたり最大50件。詳細応答には `data` と `screenshot`（画像URLと撮影時刻、または `null`）を含みます。画像はMornDropの保存期限で削除されるため、期限切れや読み込み失敗時は管理画面で画像を隠し、状態を表示します。
 
 JSON本文はストリーム読み込みで最大256 KiB、`data` はオブジェクト、revisionは1以上の安全な整数、project IDは英数字・`_`・`-` の1〜64文字です。登録、管理画面、管理APIはIPごとに30回/分、セーブ更新は60回/分のWorkers Rate Limiting bindingで抑制します。Cloudflareのbindingはロケーション単位の緩やかな制限であり、厳密な会計用途ではありません。CORSは登録とセーブ書き込みの公開APIだけに付与し、管理APIには付けません。静的HTMLにも共通セキュリティヘッダーが適用されます。
 
 ## テスト
 
-`npm test` はWrangler devとローカルD1に加え、RSA署名したAccess JWTの検証テストを実行します。期限切れ、不正署名、issuer/audience不一致、exp/nbf不正、管理画面/APIの未認証拒否、登録再試行、revision競合、上限、レート制限を確認します。`npm run deploy:dry-run` はデプロイ内容を検査します。
+`npm test` はWrangler devとローカルD1に加え、RSA署名したAccess JWTの検証テストを実行します。期限切れ、不正署名、issuer/audience不一致、exp/nbf不正、管理画面/APIの未認証拒否、登録再試行、revision競合、スクリーンショットの保持・削除・URL/日時検証、上限、レート制限を確認します。`npm run deploy:dry-run` はデプロイ内容を検査します。

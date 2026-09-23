@@ -11,16 +11,17 @@ const base = `http://127.0.0.1:${port}`;
 const secret = 'registration-secret-for-integration-tests';
 let server;
 let stateDir;
+let persistDir;
 let serverOutput = '';
 
 before(async () => {
   stateDir = await mkdtemp(join(tmpdir(), 'mornsavesaver-'));
-  const persist = join(stateDir, 'state');
-  const migration = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'migrations', 'apply', 'morn-save-saver', '--local', '--persist-to', persist], { cwd: process.cwd(), encoding: 'utf8' });
+  persistDir = join(stateDir, 'state');
+  const migration = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'migrations', 'apply', 'morn-save-saver', '--local', '--persist-to', persistDir], { cwd: process.cwd(), encoding: 'utf8' });
   if (migration.status !== 0) throw new Error(migration.stderr || migration.stdout);
   server = spawn(process.execPath, [
     'node_modules/wrangler/bin/wrangler.js', 'dev', '--local', '--port', String(port),
-    '--persist-to', persist, '--show-interactive-dev-session=false',
+    '--persist-to', persistDir, '--show-interactive-dev-session=false',
     '--var', `REGISTRATION_SECRET:${secret}`, '--var', 'ACCESS_AUD:integration-test-audience'
   ], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', chunk => { serverOutput += chunk; });
@@ -42,6 +43,12 @@ async function call(path, options = {}) {
   return fetch(`${base}${path}`, options);
 }
 async function payload(res) { return res.json(); }
+function storedScreenshot(saveId) {
+  const result = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'execute', 'morn-save-saver', '--local', '--persist-to', persistDir, '--json', '--command', `SELECT screenshot FROM saves WHERE save_id='${saveId}'`], { cwd: process.cwd(), encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+  const output = JSON.parse(result.stdout);
+  return output[0].results[0].screenshot;
+}
 
 test('registration, write auth, revision, and admin fail-closed', async () => {
   const key = 'a'.repeat(64);
@@ -55,12 +62,35 @@ test('registration, write auth, revision, and admin fail-closed', async () => {
   const retry = await payload(await call('/v1/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(registration) }));
   assert.deepEqual(retry, first);
 
-  const write = (revision, data, token = first.write_token) => call(`/v1/saves/${first.save_id}`, { method: 'PUT', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ revision, data }) });
+  const write = (revision, data, token = first.write_token, extra = {}) => call(`/v1/saves/${first.save_id}`, { method: 'PUT', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ revision, data, ...extra }) });
+  const screenshot = { url: 'https://drop.tsukumistudio.com/2026/09/23/0123456789abcdef0123456789abcdef.jpg', captured_at: '2026-09-23T00:00:00Z' };
+  assert.equal((await write(1, { level: 1 }, first.write_token, { screenshot })).status, 200);
+  assert.deepEqual(JSON.parse(storedScreenshot(first.save_id)), screenshot);
+  assert.equal((await write(1, { level: 1 }, first.write_token, { screenshot })).status, 200);
   assert.equal((await write(1, { level: 1 })).status, 200);
-  assert.equal((await write(1, { level: 1 })).status, 200);
+  assert.equal((await write(1, { level: 1 }, first.write_token, { screenshot: null })).status, 409);
+  assert.equal((await write(1, { level: 1 }, first.write_token, { screenshot: { ...screenshot, captured_at: '2026-09-23T00:00:01Z' } })).status, 409);
   assert.equal((await write(1, { level: 2 })).status, 409);
   assert.equal((await write(0, { level: 0 })).status, 400);
   assert.equal((await write(2, { level: 2 }, 'f'.repeat(64))).status, 401);
+  assert.equal((await write(2, { level: 2 })).status, 200);
+  assert.deepEqual(JSON.parse(storedScreenshot(first.save_id)), screenshot);
+  assert.equal((await write(3, { level: 3 }, first.write_token, { screenshot: null })).status, 200);
+  assert.equal(storedScreenshot(first.save_id), null);
+  assert.equal((await write(3, { level: 3 }, first.write_token, { screenshot: null })).status, 200);
+  const invalidScreenshots = [
+    { ...screenshot, url: 'https://evil.example/2026/09/23/0123456789abcdef0123456789abcdef.jpg' },
+    { ...screenshot, url: 'https://user@drop.tsukumistudio.com/2026/09/23/0123456789abcdef0123456789abcdef.jpg' },
+    { ...screenshot, url: 'https://drop.tsukumistudio.com:443/2026/09/23/0123456789abcdef0123456789abcdef.jpg' },
+    { ...screenshot, url: `${screenshot.url}?x=1` },
+    { ...screenshot, url: 'https://drop.tsukumistudio.com/2026/09/23/not-a-key.svg' },
+    { ...screenshot, url: 'https://drop.tsukumistudio.com/2026/02/31/0123456789abcdef0123456789abcdef.jpg' },
+    { ...screenshot, other: true },
+    { ...screenshot, captured_at: '2026-02-30T00:00:00Z' },
+    { ...screenshot, captured_at: '2026-09-23T00:00:00.000Z' }
+  ];
+  for (const invalid of invalidScreenshots) assert.equal((await write(4, { level: 4 }, first.write_token, { screenshot: invalid })).status, 400);
+  assert.equal(storedScreenshot(first.save_id), null);
 
   assert.equal((await call('/v1/admin/saves?project_id=integration-game')).status, 403);
   assert.equal((await call('/admin/')).status, 403);

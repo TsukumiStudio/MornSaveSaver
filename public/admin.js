@@ -72,6 +72,9 @@ function showRow(row, initialSave = null) {
   const fields = document.createElement('div');
   fields.className = 'fields';
   fields.setAttribute('aria-live', 'polite');
+  const screenshot = document.createElement('div');
+  screenshot.className = 'screenshot';
+  screenshot.setAttribute('aria-live', 'polite');
   let pending;
   let save = initialSave;
   async function getSave() {
@@ -87,6 +90,22 @@ function showRow(row, initialSave = null) {
     try {
       const result = await getSave();
       fields.replaceChildren();
+      screenshot.replaceChildren();
+      if (result.screenshot) {
+        const time = document.createElement('time');
+        time.dateTime = result.screenshot.captured_at;
+        time.textContent = `撮影日時: ${result.screenshot.captured_at}`;
+        const image = document.createElement('img');
+        image.src = result.screenshot.url;
+        image.alt = '添付スクリーンショット';
+        image.loading = 'lazy';
+        image.referrerPolicy = 'no-referrer';
+        const state = document.createElement('span');
+        state.textContent = '画像を読み込み中…';
+        image.addEventListener('load', () => state.remove(), { once: true });
+        image.addEventListener('error', () => { image.hidden = true; state.textContent = '画像を表示できません'; }, { once: true });
+        screenshot.append(time, image, state);
+      }
       renderFields(result.data, fields);
       if (!fields.childElementCount) fields.textContent = '{}';
       rendered = true;
@@ -108,7 +127,7 @@ function showRow(row, initialSave = null) {
     finally { download.disabled = false; }
   });
   summary.append(label, download);
-  group.append(summary, fields);
+  group.append(summary, screenshot, fields);
   li.append(group);
   items.append(li);
   return group;

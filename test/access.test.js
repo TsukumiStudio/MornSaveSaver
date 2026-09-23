@@ -53,11 +53,13 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
   const malformed = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': 'not.a.jwt' } }), configured);
   assert.equal(malformed.status, 403);
 
-  const save = { save_id: '123e4567-e89b-12d3-a456-426614174000', user_id: '123e4567-e89b-12d3-a456-426614174001', project_id: 'game', revision: 2, updated_at: '2026-09-23T00:00:00Z', data: '{"level":2}' };
+  const captured = { url: 'https://drop.tsukumistudio.com/2026/09/23/0123456789abcdef0123456789abcdef.jpg', captured_at: '2026-09-23T00:00:00Z' };
+  const save = { save_id: '123e4567-e89b-12d3-a456-426614174000', user_id: '123e4567-e89b-12d3-a456-426614174001', project_id: 'game', revision: 2, updated_at: '2026-09-23T00:00:00Z', data: '{"level":2}', screenshot: JSON.stringify(captured) };
+  let detailSave = save;
   const env = {
     ACCESS_AUD: audience,
     ADMIN_LIMIT: { limit: async () => ({ success: true }) },
-    DB: { prepare: () => ({ bind: () => ({ first: async () => save, all: async () => ({ results: [save] }) }) }) },
+    DB: { prepare: () => ({ bind: () => ({ first: async () => detailSave, all: async () => ({ results: [save] }) }) }) },
     ASSETS: { fetch: async () => new Response('<main>admin</main>', { headers: { 'content-type': 'text/html' } }) }
   };
   const previousFetch = globalThis.fetch;
@@ -75,7 +77,14 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
     assert.equal((await listing.json()).items[0].save_id, save.save_id);
     const response = await worker.fetch(new Request(`https://morn-save-saver.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json()).data, { level: 2 });
+    const detail = await response.json();
+    assert.deepEqual(detail.data, { level: 2 });
+    assert.deepEqual(detail.screenshot, captured);
+    assert.match(response.headers.get('content-security-policy'), /img-src 'self' https:\/\/drop\.tsukumistudio\.com/);
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    detailSave = { ...save, screenshot: null };
+    const empty = await worker.fetch(new Request(`https://morn-save-saver.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    assert.equal((await empty.json()).screenshot, null);
   } finally {
     globalThis.fetch = previousFetch;
   }

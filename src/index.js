@@ -16,7 +16,7 @@ function secure(res) {
   headers.set('x-content-type-options', 'nosniff');
   headers.set('referrer-policy', 'no-referrer');
   headers.set('x-frame-options', 'DENY');
-  headers.set('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
+  headers.set('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://drop.tsukumistudio.com; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'");
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
@@ -60,6 +60,20 @@ function corsHeaders(req) {
   const origin = req.headers.get('origin');
   return origin ? { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, PUT, OPTIONS', 'access-control-allow-headers': 'authorization, content-type', 'access-control-max-age': '600', vary: 'Origin' } : {};
 }
+const SCREENSHOT_URL = /^https:\/\/drop\.tsukumistudio\.com\/\d{4}\/(?:0[1-9]|1[0-2])\/(?:0[1-9]|[12]\d|3[01])\/[0-9a-f]{32}\.(?:jpg|jpeg|png|webp)$/;
+const SCREENSHOT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+function validScreenshot(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.url !== 'string' || typeof value.captured_at !== 'string') return false;
+  if (Object.keys(value).length !== 2 || !Object.hasOwn(value, 'url') || !Object.hasOwn(value, 'captured_at')) return false;
+  if (!SCREENSHOT_URL.test(value.url)) return false;
+  const [, year, month, day] = value.url.match(/^https:\/\/drop\.tsukumistudio\.com\/(\d{4})\/(\d{2})\/(\d{2})\//);
+  const folderDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (folderDate.getUTCFullYear() !== Number(year) || folderDate.getUTCMonth() + 1 !== Number(month) || folderDate.getUTCDate() !== Number(day)) return false;
+  const time = value.captured_at;
+  if (!SCREENSHOT_TIME.test(time)) return false;
+  const date = new Date(time);
+  return Number.isFinite(date.getTime()) && date.toISOString().replace('.000Z', 'Z') === time;
+}
 async function register(req, env) {
   if (!env.REGISTRATION_SECRET || !env.DB) return fail(503, 'service_unavailable');
   if (!await rate(env.REGISTER_LIMIT, req)) return fail(429, 'rate_limited');
@@ -97,15 +111,18 @@ async function writeSave(req, env, saveId) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || !body.data || typeof body.data !== 'object' || Array.isArray(body.data) || !Number.isSafeInteger(body.revision) || body.revision < 1) return fail(400, 'invalid_request');
   const data = JSON.stringify(body.data);
   const tokenHash = await sha256(bearer[1]);
-  const existing = await env.DB.prepare('SELECT user_id, write_token_hash, revision, data FROM saves WHERE save_id = ?').bind(saveId).first();
+  const hasScreenshot = Object.hasOwn(body, 'screenshot');
+  if (hasScreenshot && body.screenshot !== null && !validScreenshot(body.screenshot)) return fail(400, 'invalid_screenshot');
+  const screenshot = hasScreenshot && body.screenshot !== null ? JSON.stringify({ url: body.screenshot.url, captured_at: body.screenshot.captured_at }) : null;
+  const existing = await env.DB.prepare('SELECT user_id, write_token_hash, revision, data, screenshot FROM saves WHERE save_id = ?').bind(saveId).first();
   const storedHash = existing?.write_token_hash || '0'.repeat(64);
   const tokenValid = crypto.subtle.timingSafeEqual(encoder.encode(storedHash), encoder.encode(tokenHash));
   if (!existing || !tokenValid) return fail(401, 'unauthorized');
   if (body.revision > existing.revision) {
-    await env.DB.prepare("UPDATE saves SET revision = ?, data = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE save_id = ? AND revision < ?").bind(body.revision, data, saveId, body.revision).run();
+    await env.DB.prepare("UPDATE saves SET revision = ?, data = ?, screenshot = CASE WHEN ? THEN ? ELSE screenshot END, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE save_id = ? AND revision < ?").bind(body.revision, data, hasScreenshot ? 1 : 0, screenshot, saveId, body.revision).run();
   }
-  const current = await env.DB.prepare('SELECT user_id, revision, data FROM saves WHERE save_id = ?').bind(saveId).first();
-  if (current.revision !== body.revision || current.data !== data) return fail(409, 'revision_conflict');
+  const current = await env.DB.prepare('SELECT user_id, revision, data, screenshot FROM saves WHERE save_id = ?').bind(saveId).first();
+  if (current.revision !== body.revision || current.data !== data || (hasScreenshot && current.screenshot !== screenshot)) return fail(409, 'revision_conflict');
   return json({ save_id: saveId, user_id: current.user_id, revision: current.revision });
 }
 async function adminAccess(req, env) {
@@ -130,9 +147,9 @@ async function admin(req, env, url) {
   const match = /^\/v1\/admin\/saves\/([^/]+)$/.exec(url.pathname);
   if (match) {
     if (!UUID.test(match[1])) return fail(400, 'invalid_save_id');
-    const row = await env.DB.prepare('SELECT s.save_id, s.user_id, u.project_id, s.revision, s.updated_at, s.data FROM saves s JOIN users u ON u.user_id=s.user_id WHERE s.save_id=?').bind(match[1]).first();
+    const row = await env.DB.prepare('SELECT s.save_id, s.user_id, u.project_id, s.revision, s.updated_at, s.data, s.screenshot FROM saves s JOIN users u ON u.user_id=s.user_id WHERE s.save_id=?').bind(match[1]).first();
     if (!row) return fail(404, 'not_found');
-    return json({ ...row, data: JSON.parse(row.data) });
+    return json({ ...row, data: JSON.parse(row.data), screenshot: row.screenshot === null ? null : JSON.parse(row.screenshot) });
   }
   return fail(404, 'not_found');
 }
