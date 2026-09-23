@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MornSaveSaver 管理</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>MornSaveSaver</h1>
+    <p id="status" role="status" aria-live="polite"></p>
+    <form id="login" class="panel">
+      <label for="token">管理トークン</label>
+      <div class="row"><input id="token" type="password" autocomplete="off" required><button>接続</button></div>
+      <p>トークンはこのページを閉じるまでメモリ内だけに保持します。</p>
+    </form>
+    <section id="browser" class="panel" hidden>
+      <form id="search" class="row">
+        <label for="project">プロジェクト</label><input id="project" required maxlength="64" placeholder="project_id">
+        <button>一覧を表示</button>
+      </form>
+      <form id="exact" class="row">
+        <label for="save-id">Save ID</label><input id="save-id" placeholder="UUID">
+        <button>完全一致で検索</button>
+      </form>
+      <ul id="items"></ul>
+      <button id="more" type="button" hidden>次のページ</button>
+      <section id="detail" hidden>
+        <h2>セーブ内容</h2>
+        <pre id="data"></pre>
+        <a id="download">JSONをダウンロード</a>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

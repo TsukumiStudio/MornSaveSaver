@@ -1,0 +1,14 @@
+{
+  "name": "morn-save-saver",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node --test",
+    "test:integration": "node --test test/integration.test.js",
+    "deploy:dry-run": "wrangler deploy --dry-run"
+  },
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.136.3"
+  },
+  "private": true
+}
