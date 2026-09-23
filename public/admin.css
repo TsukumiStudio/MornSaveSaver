@@ -8,12 +8,23 @@ h1 { font-size: 1.6rem; }
 #exact { margin-top: var(--section); }
 input { min-width: 220px; flex: 1; padding: 10px 12px; border: 1px solid #9da9b8; border-radius: 8px; font: inherit; }
 button, a { display: inline-block; padding: 10px 16px; border: 0; border-radius: 8px; background: #2957a4; color: white; font: inherit; cursor: pointer; text-decoration: none; }
-button:hover, a:hover { filter: brightness(.9); }
-button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #7daafa; outline-offset: 2px; }
+button:not(:disabled):hover, a:hover { filter: brightness(.9); }
+button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #7daafa; outline-offset: 2px; }
 #items { padding-left: 0; list-style: none; }
 #items li { padding: 12px 0; border-bottom: 1px solid #e2e7ed; }
-#items li button { padding: 4px 10px; margin-right: 10px; }
-pre { overflow: auto; max-height: 65vh; padding: 16px; border-radius: 8px; background: #101822; color: #e8edf4; }
+summary { cursor: pointer; border-radius: 6px; padding: calc(var(--gap) / 2); }
+summary:hover { background: #edf1f7; }
+.save-group > summary { display: flex; align-items: center; gap: var(--gap); }
+.save-group > summary::-webkit-details-marker { display: none; }
+.save-group > summary::before { content: '▸'; flex: 0 0 1em; }
+.save-group[open] > summary::before { content: '▾'; }
+.save-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.save-label small { display: block; margin-top: calc(var(--gap) / 2); color: #4b5868; }
+.save-group > summary button { flex-shrink: 0; margin-left: auto; padding: calc(var(--gap) / 2) var(--gap); }
+.fields { margin: var(--gap) 0 var(--gap) var(--panel); padding-left: var(--gap); border-left: 2px solid #e2e7ed; }
+.field { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr); gap: var(--gap); padding: calc(var(--gap) / 2); overflow-wrap: anywhere; }
+.field span { white-space: pre-wrap; }
+button:disabled { opacity: .6; cursor: wait; }
 p { color: #4b5868; }
 [hidden] { display: none !important; }
 @media (max-width: 540px) { .panel { padding: var(--edge); } .row { align-items: stretch; flex-direction: column; } .row > * { width: 100%; } }

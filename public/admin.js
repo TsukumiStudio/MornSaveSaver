@@ -1,7 +1,6 @@
 const status = document.querySelector('#status');
 const items = document.querySelector('#items');
 const more = document.querySelector('#more');
-const detail = document.querySelector('#detail');
 const projectInput = document.querySelector('#project');
 let project = new URLSearchParams(location.search).get('project_id') || '';
 let cursor = null;
@@ -29,23 +28,99 @@ function report(error) {
     status.append(' ', link);
   }
 }
-function showRow(row) {
+function renderFields(value, parent) {
+  for (const [key, child] of Object.entries(value)) {
+    if (child !== null && typeof child === 'object') {
+      const group = document.createElement('details');
+      const title = document.createElement('summary');
+      title.textContent = `${key} (${Object.keys(child).length})`;
+      const children = document.createElement('div');
+      children.className = 'fields';
+      renderFields(child, children);
+      group.append(title, children);
+      parent.append(group);
+    } else {
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('strong');
+      label.textContent = key;
+      const text = document.createElement('span');
+      text.textContent = JSON.stringify(child);
+      field.append(label, text);
+      parent.append(field);
+    }
+  }
+}
+function showRow(row, initialSave = null) {
+  const existing = document.getElementById(`save-${row.save_id}`);
+  if (existing) return existing;
   const li = document.createElement('li');
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.textContent = '開く';
-  button.addEventListener('click', () => openSave(row.save_id));
-  li.append(button, `save ${row.save_id} · user ${row.user_id} · revision ${row.revision} · ${row.updated_at}`);
+  const group = document.createElement('details');
+  group.id = `save-${row.save_id}`;
+  group.className = 'save-group';
+  const summary = document.createElement('summary');
+  const label = document.createElement('span');
+  label.className = 'save-label';
+  const id = document.createElement('strong');
+  id.textContent = row.save_id;
+  const meta = document.createElement('small');
+  meta.textContent = `user ${row.user_id} · revision ${row.revision} · ${row.updated_at}`;
+  label.append(id, meta);
+  const download = document.createElement('button');
+  download.type = 'button';
+  download.textContent = 'JSONで保存';
+  const fields = document.createElement('div');
+  fields.className = 'fields';
+  fields.setAttribute('aria-live', 'polite');
+  let pending;
+  let save = initialSave;
+  async function getSave() {
+    if (save) return save;
+    pending ??= api(`/v1/admin/saves/${encodeURIComponent(row.save_id)}`);
+    try { save = await pending; return save; }
+    finally { pending = null; }
+  }
+  let rendered = false;
+  group.addEventListener('toggle', async () => {
+    if (!group.open || rendered) return;
+    fields.textContent = '読み込み中…';
+    try {
+      const result = await getSave();
+      fields.replaceChildren();
+      renderFields(result.data, fields);
+      if (!fields.childElementCount) fields.textContent = '{}';
+      rendered = true;
+    } catch (error) { fields.textContent = error.message; report(error); }
+  });
+  download.addEventListener('click', async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    download.disabled = true;
+    try {
+      const result = await getSave();
+      const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${row.save_id}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { report(error); }
+    finally { download.disabled = false; }
+  });
+  summary.append(label, download);
+  group.append(summary, fields);
+  li.append(group);
   items.append(li);
+  return group;
 }
 async function loadPage(reset = false) {
-  if (reset) { cursor = null; items.replaceChildren(); detail.hidden = true; }
+  if (reset) { cursor = null; items.replaceChildren(); }
   status.textContent = '読み込み中…';
   try {
     const q = new URLSearchParams({ project_id: project });
     if (cursor) q.set('cursor', cursor);
     const result = await api(`/v1/admin/saves?${q}`);
-    result.items.forEach(showRow);
+    result.items.forEach(row => showRow(row));
     cursor = result.next_cursor;
     more.hidden = !cursor;
     status.textContent = `${items.children.length}件を表示しました。`;
@@ -55,15 +130,9 @@ async function openSave(saveId) {
   status.textContent = '読み込み中…';
   try {
     const save = await api(`/v1/admin/saves/${encodeURIComponent(saveId)}`);
-    const text = JSON.stringify(save, null, 2);
-    document.querySelector('#data').textContent = text;
-    const blob = new Blob([text], { type: 'application/json' });
-    const link = document.querySelector('#download');
-    if (link.dataset.url) URL.revokeObjectURL(link.dataset.url);
-    link.href = URL.createObjectURL(blob);
-    link.dataset.url = link.href;
-    link.download = `${save.save_id}.json`;
-    detail.hidden = false;
+    const group = showRow(save, save);
+    group.open = true;
+    group.scrollIntoView({ block: 'nearest' });
     status.textContent = '';
   } catch (error) { report(error); }
 }
