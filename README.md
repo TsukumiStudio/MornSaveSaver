@@ -1,5 +1,7 @@
 # MornSaveSaver
 
+稼働先: https://morn-save-saver.pikapikan0526.workers.dev （管理画面も同じURL）。ゲームからの利用例は [GMornSaveSaver](https://github.com/TsukumiStudio/GMornSaveSaver) を参照。
+
 Cloudflare Workers + D1 の小さなJSONセーブ保管APIと管理ページです。セーブはユーザーごとに1件だけ保持し、revisionが大きい書き込みだけを保存します。
 
 ## セットアップ

@@ -33,7 +33,7 @@ async function loadPage(reset = false) {
     result.items.forEach(showRow);
     cursor = result.next_cursor;
     more.hidden = !cursor;
-    status.textContent = `${result.items.length}件を表示しました。`;
+    status.textContent = `${items.children.length}件を表示しました。`;
   } catch (e) { status.textContent = e.message; }
 }
 async function openSave(saveId) {
