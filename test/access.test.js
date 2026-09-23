@@ -74,7 +74,9 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
     assert.equal(cookiePage.status, 200);
     const listing = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(listing.status, 200);
-    assert.equal((await listing.json()).items[0].save_id, save.save_id);
+    const listed = (await listing.json()).items[0];
+    assert.equal(listed.save_id, save.save_id);
+    assert.deepEqual(listed.screenshot, captured);
     const response = await worker.fetch(new Request(`https://morn-save-saver.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(response.status, 200);
     const detail = await response.json();

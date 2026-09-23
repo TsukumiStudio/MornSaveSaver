@@ -139,9 +139,9 @@ async function admin(req, env, url) {
     const cursor = url.searchParams.get('cursor');
     if (!projectId || !PROJECT.test(projectId)) return fail(400, 'invalid_project_id');
     if (cursor && !UUID.test(cursor)) return fail(400, 'invalid_cursor');
-    const rows = await env.DB.prepare(`SELECT s.save_id, s.user_id, u.project_id, s.revision, s.updated_at FROM saves s JOIN users u ON u.user_id=s.user_id WHERE u.project_id=? ${cursor ? 'AND s.save_id > ?' : ''} ORDER BY s.save_id LIMIT 51`).bind(...(cursor ? [projectId, cursor] : [projectId])).all();
+    const rows = await env.DB.prepare(`SELECT s.save_id, s.user_id, u.project_id, s.revision, s.updated_at, s.screenshot FROM saves s JOIN users u ON u.user_id=s.user_id WHERE u.project_id=? ${cursor ? 'AND s.save_id > ?' : ''} ORDER BY s.save_id LIMIT 51`).bind(...(cursor ? [projectId, cursor] : [projectId])).all();
     const hasMore = rows.results.length > 50;
-    const items = rows.results.slice(0, 50);
+    const items = rows.results.slice(0, 50).map(row => ({ ...row, screenshot: row.screenshot === null ? null : JSON.parse(row.screenshot) }));
     return json({ items, next_cursor: hasMore ? items.at(-1).save_id : null });
   }
   const match = /^\/v1\/admin\/saves\/([^/]+)$/.exec(url.pathname);

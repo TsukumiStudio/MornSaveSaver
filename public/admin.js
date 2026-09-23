@@ -51,6 +51,12 @@ function renderFields(value, parent) {
     }
   }
 }
+function japanTime(value) {
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).format(new Date(value)) + ' 日本時間';
+}
 function showRow(row, initialSave = null) {
   const existing = document.getElementById(`save-${row.save_id}`);
   if (existing) return existing;
@@ -64,7 +70,7 @@ function showRow(row, initialSave = null) {
   const id = document.createElement('strong');
   id.textContent = row.save_id;
   const meta = document.createElement('small');
-  meta.textContent = `user ${row.user_id} · revision ${row.revision} · ${row.updated_at}`;
+  meta.textContent = `user ${row.user_id} · revision ${row.revision} · ${japanTime(row.updated_at)}`;
   label.append(id, meta);
   const download = document.createElement('button');
   download.type = 'button';
@@ -72,9 +78,25 @@ function showRow(row, initialSave = null) {
   const fields = document.createElement('div');
   fields.className = 'fields';
   fields.setAttribute('aria-live', 'polite');
-  const screenshot = document.createElement('div');
+  const screenshot = document.createElement('span');
   screenshot.className = 'screenshot';
-  screenshot.setAttribute('aria-live', 'polite');
+  if (row.screenshot) {
+    const time = document.createElement('time');
+    time.dateTime = row.screenshot.captured_at;
+    time.textContent = `撮影: ${japanTime(row.screenshot.captured_at)}`;
+    const image = document.createElement('img');
+    image.src = row.screenshot.url;
+    image.alt = '添付スクリーンショット';
+    image.loading = 'lazy';
+    image.referrerPolicy = 'no-referrer';
+    const state = document.createElement('span');
+    state.textContent = '画像を読み込み中…';
+    image.addEventListener('load', () => state.remove(), { once: true });
+    image.addEventListener('error', () => { image.hidden = true; state.textContent = '画像を表示できません'; }, { once: true });
+    screenshot.append(image, time, state);
+  } else {
+    screenshot.textContent = '画像なし';
+  }
   let pending;
   let save = initialSave;
   async function getSave() {
@@ -90,22 +112,6 @@ function showRow(row, initialSave = null) {
     try {
       const result = await getSave();
       fields.replaceChildren();
-      screenshot.replaceChildren();
-      if (result.screenshot) {
-        const time = document.createElement('time');
-        time.dateTime = result.screenshot.captured_at;
-        time.textContent = `撮影日時: ${result.screenshot.captured_at}`;
-        const image = document.createElement('img');
-        image.src = result.screenshot.url;
-        image.alt = '添付スクリーンショット';
-        image.loading = 'lazy';
-        image.referrerPolicy = 'no-referrer';
-        const state = document.createElement('span');
-        state.textContent = '画像を読み込み中…';
-        image.addEventListener('load', () => state.remove(), { once: true });
-        image.addEventListener('error', () => { image.hidden = true; state.textContent = '画像を表示できません'; }, { once: true });
-        screenshot.append(time, image, state);
-      }
       renderFields(result.data, fields);
       if (!fields.childElementCount) fields.textContent = '{}';
       rendered = true;
@@ -126,8 +132,8 @@ function showRow(row, initialSave = null) {
     } catch (error) { report(error); }
     finally { download.disabled = false; }
   });
-  summary.append(label, download);
-  group.append(summary, screenshot, fields);
+  summary.append(screenshot, label, download);
+  group.append(summary, fields);
   li.append(group);
   items.append(li);
   return group;
