@@ -9,7 +9,6 @@ import { join } from 'node:path';
 const port = 8790 + Math.floor(Math.random() * 500);
 const base = `http://127.0.0.1:${port}`;
 const secret = 'registration-secret-for-integration-tests';
-const adminToken = 'admin-token-for-integration-tests';
 let server;
 let stateDir;
 let serverOutput = '';
@@ -22,7 +21,7 @@ before(async () => {
   server = spawn(process.execPath, [
     'node_modules/wrangler/bin/wrangler.js', 'dev', '--local', '--port', String(port),
     '--persist-to', persist, '--show-interactive-dev-session=false',
-    '--var', `REGISTRATION_SECRET:${secret}`, '--var', `ADMIN_TOKEN:${adminToken}`
+    '--var', `REGISTRATION_SECRET:${secret}`, '--var', 'ACCESS_AUD:integration-test-audience'
   ], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', chunk => { serverOutput += chunk; });
   server.stderr.on('data', chunk => { serverOutput += chunk; });
@@ -44,7 +43,7 @@ async function call(path, options = {}) {
 }
 async function payload(res) { return res.json(); }
 
- test('registration, write auth, revision, and admin retrieval', async () => {
+test('registration, write auth, revision, and admin fail-closed', async () => {
   const key = 'a'.repeat(64);
   const registration = { project_id: 'integration-game', registration_key: key };
   const firstRes = await call('/v1/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(registration) });
@@ -63,15 +62,8 @@ async function payload(res) { return res.json(); }
   assert.equal((await write(0, { level: 0 })).status, 400);
   assert.equal((await write(2, { level: 2 }, 'f'.repeat(64))).status, 401);
 
-  const auth = { authorization: `Bearer ${adminToken}` };
-  const listing = await payload(await call('/v1/admin/saves?project_id=integration-game', { headers: auth }));
-  assert.equal(listing.items.length, 1);
-  assert.equal(listing.items[0].save_id, first.save_id);
-  const detail = await payload(await call(`/v1/admin/saves/${first.save_id}`, { headers: auth }));
-  assert.deepEqual(detail.data, { level: 1 });
-  assert.equal(detail.revision, 1);
-  assert.equal((await call(`/v1/admin/saves/${first.save_id}`)).status, 401);
-  assert.equal((await call('/v1/admin/saves?project_id=integration-game', { headers: { authorization: 'Bearer wrong' } })).status, 401);
+  assert.equal((await call('/v1/admin/saves?project_id=integration-game')).status, 403);
+  assert.equal((await call('/admin/')).status, 403);
 });
 
 test('enforces 256 KiB body limit and CORS scope', async () => {
@@ -79,17 +71,19 @@ test('enforces 256 KiB body limit and CORS scope', async () => {
   const oversized = await call('/v1/users', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://game.example' }, body: tooLarge });
   assert.equal(oversized.status, 413);
   assert.equal(oversized.headers.get('access-control-allow-origin'), '*');
-  const admin = await call('/v1/admin/saves?project_id=integration-game', { headers: { authorization: `Bearer ${adminToken}`, origin: 'https://game.example' } });
+  const admin = await call('/v1/admin/saves?project_id=integration-game', { headers: { origin: 'https://game.example' } });
   assert.equal(admin.headers.get('access-control-allow-origin'), null);
   const health = await call('/health');
   assert.deepEqual(await payload(health), { ok: true });
-  const page = await call('/');
-  assert.equal(page.status, 200);
+  const root = await call('/', { redirect: 'manual' });
+  assert.equal(root.status, 302);
+  assert.equal(root.headers.get('location'), 'http://127.0.0.1:' + new URL(base).port + '/admin/');
+  const page = await call('/admin/');
+  assert.equal(page.status, 403);
   assert.equal(page.headers.get('x-content-type-options'), 'nosniff');
-  assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
 });
 
-test('rate limits registration and save updates by client IP', async () => {
+test('rate limits registration, save updates, and admin requests by client IP', async () => {
   let response;
   for (let i = 0; i < 35; i++) {
     response = await call('/v1/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
@@ -106,7 +100,7 @@ test('rate limits registration and save updates by client IP', async () => {
 
   let adminResponse;
   for (let i = 0; i < 35; i++) {
-    adminResponse = await call('/v1/admin/saves?project_id=integration-game', { headers: { authorization: 'Bearer wrong' } });
+    adminResponse = await call('/v1/admin/saves?project_id=integration-game');
     if (adminResponse.status === 429) break;
   }
   assert.equal(adminResponse.status, 429);

@@ -1,3 +1,5 @@
+import { checkAccess } from './access.js';
+
 const MAX_BODY = 256 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PROJECT = /^[A-Za-z0-9_-]{1,64}$/;
@@ -106,15 +108,15 @@ async function writeSave(req, env, saveId) {
   if (current.revision !== body.revision || current.data !== data) return fail(409, 'revision_conflict');
   return json({ save_id: saveId, user_id: current.user_id, revision: current.revision });
 }
-async function bearerMatches(req, token) {
-  const provided = /^Bearer (.+)$/.exec(req.headers.get('authorization') || '')?.[1] || '';
-  const [providedHash, expectedHash] = await Promise.all([sha256(provided), sha256(token)]);
-  return crypto.subtle.timingSafeEqual(encoder.encode(providedHash), encoder.encode(expectedHash));
+async function adminAccess(req, env) {
+  if (typeof env.ACCESS_AUD !== 'string' || !env.ACCESS_AUD.trim() || !env.DB) return fail(503, 'service_unavailable');
+  if (!await rate(env.ADMIN_LIMIT, req)) return fail(429, 'rate_limited');
+  return (await checkAccess(req, env)).response || null;
 }
 async function admin(req, env, url) {
-  if (!env.ADMIN_TOKEN || !env.DB) return fail(503, 'service_unavailable');
-  if (!await rate(env.ADMIN_LIMIT, req)) return fail(429, 'rate_limited');
-  if (!await bearerMatches(req, env.ADMIN_TOKEN)) return fail(401, 'unauthorized');
+  const denied = await adminAccess(req, env);
+  if (denied) return denied;
+  if (req.method !== 'GET') return fail(405, 'method_not_allowed');
   if (url.pathname === '/v1/admin/saves') {
     const projectId = url.searchParams.get('project_id');
     const cursor = url.searchParams.get('cursor');
@@ -143,7 +145,19 @@ export default {
       const method = req.method;
       let res;
       if (method === 'GET' && url.pathname === '/health') res = json({ ok: true });
-      else if (url.pathname === '/v1/users' && (method === 'POST' || method === 'OPTIONS')) {
+      else if (url.pathname === '/') res = method === 'GET' ? Response.redirect(new URL('/admin/', url), 302) : fail(405, 'method_not_allowed');
+      else if (url.pathname === '/index.html' || url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
+        const denied = await adminAccess(req, env);
+        if (denied) res = denied;
+        else if (method !== 'GET') res = fail(405, 'method_not_allowed');
+        else if (url.pathname === '/admin' || url.pathname === '/index.html') res = Response.redirect(new URL('/admin/', url), 302);
+        else if (url.pathname === '/admin/' || url.pathname === '/admin/index.html') {
+          const page = await env.ASSETS.fetch(new Request(new URL('/index.html', url), req));
+          const headers = new Headers(page.headers);
+          headers.set('cache-control', 'no-store');
+          res = new Response(page.body, { status: page.status, headers });
+        } else res = fail(404, 'not_found');
+      } else if (url.pathname === '/v1/users' && (method === 'POST' || method === 'OPTIONS')) {
         cors = corsHeaders(req);
         res = method === 'OPTIONS' ? new Response(null, { status: 204, headers: cors }) : await register(req, env);
         for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
@@ -151,8 +165,8 @@ export default {
         cors = corsHeaders(req);
         res = method === 'OPTIONS' ? new Response(null, { status: 204, headers: cors }) : await writeSave(req, env, url.pathname.slice('/v1/saves/'.length));
         for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
-      } else if (url.pathname.startsWith('/v1/admin/')) {
-        res = method === 'GET' ? await admin(req, env, url) : fail(405, 'method_not_allowed');
+      } else if (url.pathname === '/v1/admin' || url.pathname.startsWith('/v1/admin/')) {
+        res = await admin(req, env, url);
       } else {
         res = await env.ASSETS.fetch(req);
       }

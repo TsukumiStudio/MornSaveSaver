@@ -11,12 +11,7 @@
   <main>
     <h1>MornSaveSaver</h1>
     <p id="status" role="status" aria-live="polite"></p>
-    <form id="login" class="panel">
-      <label for="token">管理トークン</label>
-      <div class="row"><input id="token" type="password" autocomplete="off" required><button>接続</button></div>
-      <p>トークンはこのページを閉じるまでメモリ内だけに保持します。</p>
-    </form>
-    <section id="browser" class="panel" hidden>
+    <section class="panel">
       <form id="search" class="row">
         <label for="project">プロジェクト</label><input id="project" required maxlength="64" placeholder="project_id">
         <button>一覧を表示</button>
@@ -33,6 +28,7 @@
         <a id="download">JSONをダウンロード</a>
       </section>
     </section>
+    <p><a href="https://tsukumistudio.cloudflareaccess.com/cdn-cgi/access/logout">Cloudflare Accessからログアウト</a></p>
   </main>
 </body>
 </html>
