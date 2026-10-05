@@ -22,7 +22,9 @@ summary:hover { background: #edf1f7; }
 .save-info td { padding: 1px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .save-info tr + tr > * { border-top: 1px solid #edf1f7; }
 .save-group > summary button { flex-shrink: 0; margin-left: auto; padding: calc(var(--gap) / 2) var(--gap); }
-.fields { margin: var(--gap) 0 var(--gap) var(--panel); padding-left: var(--gap); border-left: 2px solid #e2e7ed; }
+.fields { margin: var(--gap) 0 var(--gap) var(--panel); padding-left: var(--gap); border-left: 2px solid #e2e7ed; font-size: .75rem; line-height: 1.35; }
+.fields .field { padding: 1px calc(var(--gap) / 2); }
+.fields summary { padding: 2px calc(var(--gap) / 2); }
 .screenshot { display: grid; place-items: center; width: 200px; aspect-ratio: 16 / 9; border-radius: 8px; background: #edf1f7; flex: 0 0 200px; font-size: .75rem; color: #4b5868; }
 .screenshot img { width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; object-fit: contain; }
 .screenshot img + span { position: absolute; }
