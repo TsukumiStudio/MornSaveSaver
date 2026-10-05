@@ -30,6 +30,8 @@ summary:hover { background: #edf1f7; }
 .screenshot img + span { position: absolute; }
 .field { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr); gap: var(--gap); padding: calc(var(--gap) / 2); overflow-wrap: anywhere; }
 .field span { white-space: pre-wrap; }
+button.link { padding: 0; background: none; color: #2957a4; text-decoration: underline; font-size: inherit; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#history-title { font-weight: 600; overflow-wrap: anywhere; }
 button:disabled { opacity: .6; cursor: wait; }
 p { color: #4b5868; }
 [hidden] { display: none !important; }

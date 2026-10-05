@@ -16,7 +16,7 @@ test('一覧を展開せず、画像の右へ情報を表で並べ、日付境�
   } });
   vm.runInContext(readFileSync('public/admin.js', 'utf8'), context);
   assert.equal(vm.runInContext("japanTime('2026-09-23T15:00:00Z')", context), '2026/09/24 00:00:00 日本時間');
-  vm.runInContext(`showRow({save_id:'test',user_id:'user',revision:1,updated_at:'2026-09-23T12:51:50Z',screenshot:{url:'https://drop.tsukumistudio.com/image.jpg',captured_at:'2026-09-23T12:51:50Z'}})`, context);
+  vm.runInContext(`showRow(saveEntry({save_id:'test',user_id:'user',revision:1,updated_at:'2026-09-23T12:51:50Z',screenshot:{url:'https://drop.tsukumistudio.com/image.jpg',captured_at:'2026-09-23T12:51:50Z'}}))`, context);
   const summary = nodes.find(node => node.tag === 'summary');
   const preview = summary.children.find(node => node.className === 'screenshot');
   assert.equal(preview.children.find(node => node.tag === 'img').src, 'https://drop.tsukumistudio.com/image.jpg');
@@ -24,6 +24,9 @@ test('一覧を展開せず、画像の右へ情報を表で並べ、日付境�
   const cells = Object.fromEntries(table.children.map(tr => [tr.children[0].textContent, tr.children[1]]));
   assert.deepEqual(Object.keys(cells), ['Save ID', 'User ID', 'Revision', '更新', '撮影']);
   assert.equal(cells['Save ID'].textContent, 'test');
+  // User ID は履歴へ移る釦になっている。
+  assert.equal(cells['User ID'].children[0].tag, 'button');
+  assert.equal(cells['User ID'].children[0].textContent, 'user');
   assert.equal(cells['更新'].textContent, '2026/09/23 21:51:50 日本時間');
   assert.equal(cells['撮影'].children[0].textContent, '2026/09/23 21:51:50 日本時間');
   assert.equal(summary.children.indexOf(preview), 0);

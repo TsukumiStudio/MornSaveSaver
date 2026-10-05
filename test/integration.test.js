@@ -22,7 +22,9 @@ before(async () => {
   server = spawn(process.execPath, [
     'node_modules/wrangler/bin/wrangler.js', 'dev', '--local', '--port', String(port),
     '--persist-to', persistDir, '--show-interactive-dev-session=false',
-    '--var', `REGISTRATION_SECRET:${secret}`, '--var', 'ACCESS_AUD:integration-test-audience'
+    '--var', `REGISTRATION_SECRET:${secret}`, '--var', 'ACCESS_AUD:integration-test-audience',
+    // 履歴の間引きを数回の保存で確かめるため、残す件数を2件にする。
+    '--var', 'HISTORY_LIMIT:2'
   ], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', chunk => { serverOutput += chunk; });
   server.stderr.on('data', chunk => { serverOutput += chunk; });
@@ -43,6 +45,11 @@ async function call(path, options = {}) {
   return fetch(`${base}${path}`, options);
 }
 async function payload(res) { return res.json(); }
+function query(sql) {
+  const result = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'execute', 'morn-save-saver', '--local', '--persist-to', persistDir, '--json', '--command', sql], { cwd: process.cwd(), encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+  return JSON.parse(result.stdout)[0].results;
+}
 function storedScreenshot(saveId) {
   const result = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'execute', 'morn-save-saver', '--local', '--persist-to', persistDir, '--json', '--command', `SELECT screenshot FROM saves WHERE save_id='${saveId}'`], { cwd: process.cwd(), encoding: 'utf8' });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -78,6 +85,11 @@ test('registration, write auth, revision, and admin fail-closed', async () => {
   assert.equal((await write(3, { level: 3 }, first.write_token, { screenshot: null })).status, 200);
   assert.equal(storedScreenshot(first.save_id), null);
   assert.equal((await write(3, { level: 3 }, first.write_token, { screenshot: null })).status, 200);
+  // 保存ごとに履歴が1件ずつ増え、残す件数（検査では2件）を超えた古いものは消える。
+  // 同じ revision の再送や、遅れて届いた古い revision では増えない。
+  assert.equal((await write(2, { level: 2 })).status, 409);
+  assert.deepEqual(query(`SELECT revision, data, screenshot FROM save_history WHERE save_id='${first.save_id}' ORDER BY revision`),
+    [{ revision: 2, data: '{"level":2}', screenshot: JSON.stringify(screenshot) }, { revision: 3, data: '{"level":3}', screenshot: null }]);
   const invalidScreenshots = [
     { ...screenshot, url: 'https://evil.example/2026/09/23/0123456789abcdef0123456789abcdef.jpg' },
     { ...screenshot, url: 'https://user@drop.tsukumistudio.com/2026/09/23/0123456789abcdef0123456789abcdef.jpg' },

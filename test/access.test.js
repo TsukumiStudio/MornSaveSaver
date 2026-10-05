@@ -46,7 +46,7 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
   assert.equal(missing.status, 503);
   assert.equal((await worker.fetch(new Request('https://morn-save-saver.workers.dev/admin/'), missingEnv)).status, 503);
   const configured = { ACCESS_AUD: audience, DB: {}, ADMIN_LIMIT: { limit: async () => ({ success: true }) } };
-  for (const path of ['/admin/', '/admin/private', '/index.html', '/v1/admin', '/v1/admin/saves?project_id=game', '/v1/admin/projects']) {
+  for (const path of ['/admin/', '/admin/private', '/index.html', '/v1/admin', '/v1/admin/saves?project_id=game', '/v1/admin/projects', `/v1/admin/users/${crypto.randomUUID()}/history`]) {
     const denied = await worker.fetch(new Request(`https://morn-save-saver.workers.dev${path}`), configured);
     assert.equal(denied.status, 403, path);
   }
@@ -75,6 +75,11 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
     const projects = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/projects', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(projects.status, 200);
     assert.deepEqual((await projects.json()).items, [{ project_id: 'game', saves: 1 }]);
+    const historyList = await worker.fetch(new Request(`https://morn-save-saver.workers.dev/v1/admin/users/${save.user_id}/history`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    assert.equal(historyList.status, 200);
+    assert.equal((await historyList.json()).items.length, 1);
+    const badHistory = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/users/not-a-uuid/history', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    assert.equal(badHistory.status, 400);
     const listing = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(listing.status, 200);
     const listed = (await listing.json()).items[0];

@@ -60,6 +60,8 @@ function corsHeaders(req) {
   const origin = req.headers.get('origin');
   return origin ? { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, PUT, OPTIONS', 'access-control-allow-headers': 'authorization, content-type', 'access-control-max-age': '600', vary: 'Origin' } : {};
 }
+// 1セーブあたり残す履歴の件数。古いものから消す。検査では環境変数 HISTORY_LIMIT で小さくする。
+const HISTORY_LIMIT = 300;
 const SCREENSHOT_URL = /^https:\/\/drop\.tsukumistudio\.com\/\d{4}\/(?:0[1-9]|1[0-2])\/(?:0[1-9]|[12]\d|3[01])\/[0-9a-f]{32}\.(?:jpg|jpeg|png|webp)$/;
 const SCREENSHOT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 function validScreenshot(value) {
@@ -119,7 +121,13 @@ async function writeSave(req, env, saveId) {
   const tokenValid = crypto.subtle.timingSafeEqual(encoder.encode(storedHash), encoder.encode(tokenHash));
   if (!existing || !tokenValid) return fail(401, 'unauthorized');
   if (body.revision > existing.revision) {
-    await env.DB.prepare("UPDATE saves SET revision = ?, data = ?, screenshot = CASE WHEN ? THEN ? ELSE screenshot END, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE save_id = ? AND revision < ?").bind(body.revision, data, hasScreenshot ? 1 : 0, screenshot, saveId, body.revision).run();
+    // 最新の書き換えと履歴の追加・間引きを1回の batch で通す。履歴は書き換えた後の行から写すので、
+    // 古い revision が遅れて届いて書き換えが起きなかったときは何も足さない。
+    await env.DB.batch([
+      env.DB.prepare("UPDATE saves SET revision = ?, data = ?, screenshot = CASE WHEN ? THEN ? ELSE screenshot END, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE save_id = ? AND revision < ?").bind(body.revision, data, hasScreenshot ? 1 : 0, screenshot, saveId, body.revision),
+      env.DB.prepare('INSERT OR IGNORE INTO save_history (save_id, revision, data, screenshot, saved_at) SELECT save_id, revision, data, screenshot, updated_at FROM saves WHERE save_id = ? AND revision = ?').bind(saveId, body.revision),
+      env.DB.prepare('DELETE FROM save_history WHERE save_id = ? AND revision NOT IN (SELECT revision FROM save_history WHERE save_id = ? ORDER BY revision DESC LIMIT ?)').bind(saveId, saveId, Number(env.HISTORY_LIMIT) || HISTORY_LIMIT)
+    ]);
   }
   const current = await env.DB.prepare('SELECT user_id, revision, data, screenshot FROM saves WHERE save_id = ?').bind(saveId).first();
   if (current.revision !== body.revision || current.data !== data || (hasScreenshot && current.screenshot !== screenshot)) return fail(409, 'revision_conflict');
@@ -148,6 +156,24 @@ async function admin(req, env, url) {
     const hasMore = rows.results.length > 50;
     const items = rows.results.slice(0, 50).map(row => ({ ...row, screenshot: row.screenshot === null ? null : JSON.parse(row.screenshot) }));
     return json({ items, next_cursor: hasMore ? items.at(-1).save_id : null });
+  }
+  const history = /^\/v1\/admin\/users\/([^/]+)\/history(?:\/(\d+))?$/.exec(url.pathname);
+  if (history) {
+    // 1人の保存の履歴。一覧は新しい順に50件ずつ、revision を指すとその時点の中身を返す。
+    if (!UUID.test(history[1])) return fail(400, 'invalid_user_id');
+    const owner = await env.DB.prepare('SELECT s.save_id, s.user_id, u.project_id FROM saves s JOIN users u ON u.user_id=s.user_id WHERE s.user_id=?').bind(history[1]).first();
+    if (!owner) return fail(404, 'not_found');
+    if (history[2]) {
+      const row = await env.DB.prepare('SELECT revision, saved_at, data, screenshot FROM save_history WHERE save_id=? AND revision=?').bind(owner.save_id, Number(history[2])).first();
+      if (!row) return fail(404, 'not_found');
+      return json({ ...owner, ...row, data: JSON.parse(row.data), screenshot: row.screenshot === null ? null : JSON.parse(row.screenshot) });
+    }
+    const cursor = url.searchParams.get('cursor');
+    if (cursor && !/^\d+$/.test(cursor)) return fail(400, 'invalid_cursor');
+    const rows = await env.DB.prepare(`SELECT revision, saved_at, screenshot FROM save_history WHERE save_id=? ${cursor ? 'AND revision < ?' : ''} ORDER BY revision DESC LIMIT 51`).bind(...(cursor ? [owner.save_id, Number(cursor)] : [owner.save_id])).all();
+    const hasMore = rows.results.length > 50;
+    const items = rows.results.slice(0, 50).map(row => ({ ...row, screenshot: row.screenshot === null ? null : JSON.parse(row.screenshot) }));
+    return json({ ...owner, items, next_cursor: hasMore ? String(items.at(-1).revision) : null });
   }
   const match = /^\/v1\/admin\/saves\/([^/]+)$/.exec(url.pathname);
   if (match) {
