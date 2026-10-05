@@ -151,11 +151,14 @@ async function admin(req, env, url) {
     const projectId = url.searchParams.get('project_id');
     const cursor = url.searchParams.get('cursor');
     if (!projectId || !PROJECT.test(projectId)) return fail(400, 'invalid_project_id');
-    if (cursor && !UUID.test(cursor)) return fail(400, 'invalid_cursor');
-    const rows = await env.DB.prepare(`SELECT s.save_id, s.user_id, u.project_id, s.revision, s.updated_at, s.screenshot FROM saves s JOIN users u ON u.user_id=s.user_id WHERE u.project_id=? ${cursor ? 'AND s.save_id > ?' : ''} ORDER BY s.save_id LIMIT 51`).bind(...(cursor ? [projectId, cursor] : [projectId])).all();
+    // 最終更新が新しい順。続きは「前のページの最後の更新日時と save_id」から取る（同時刻でも抜けない）。
+    const after = cursor ? /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)~([0-9a-f-]{36})$/i.exec(cursor) : null;
+    if (cursor && (!after || !UUID.test(after[2]))) return fail(400, 'invalid_cursor');
+    const rows = await env.DB.prepare(`SELECT s.save_id, s.user_id, u.project_id, s.revision, s.updated_at, s.screenshot FROM saves s JOIN users u ON u.user_id=s.user_id WHERE u.project_id=? ${after ? 'AND (s.updated_at < ? OR (s.updated_at = ? AND s.save_id < ?))' : ''} ORDER BY s.updated_at DESC, s.save_id DESC LIMIT 51`).bind(...(after ? [projectId, after[1], after[1], after[2]] : [projectId])).all();
     const hasMore = rows.results.length > 50;
     const items = rows.results.slice(0, 50).map(row => ({ ...row, screenshot: row.screenshot === null ? null : JSON.parse(row.screenshot) }));
-    return json({ items, next_cursor: hasMore ? items.at(-1).save_id : null });
+    const last = items.at(-1);
+    return json({ items, next_cursor: hasMore ? `${last.updated_at}~${last.save_id}` : null });
   }
   const history = /^\/v1\/admin\/users\/([^/]+)\/history(?:\/(\d+))?$/.exec(url.pathname);
   if (history) {

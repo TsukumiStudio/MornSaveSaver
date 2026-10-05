@@ -59,9 +59,10 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
   const env = {
     ACCESS_AUD: audience,
     ADMIN_LIMIT: { limit: async () => ({ success: true }) },
-    DB: { prepare: sql => ({ all: async () => ({ results: sql.includes('GROUP BY') ? [{ project_id: 'game', saves: 1 }] : [save] }), bind: () => ({ first: async () => detailSave, all: async () => ({ results: [save] }) }) }) },
+    DB: { prepare: sql => ({ all: async () => ({ results: sql.includes('GROUP BY') ? [{ project_id: 'game', saves: 1 }] : [save] }), bind: (...args) => { queries.push({ sql, args }); return { first: async () => detailSave, all: async () => ({ results: [save] }) }; } }) },
     ASSETS: { fetch: async () => new Response('<main>admin</main>', { headers: { 'content-type': 'text/html' } }) }
   };
+  const queries = [];
   const previousFetch = globalThis.fetch;
   globalThis.fetch = certFetcher;
   try {
@@ -83,6 +84,13 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
     const listing = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(listing.status, 200);
     const listed = (await listing.json()).items[0];
+    // 一覧は最終更新が新しい順。続きは「更新日時~save_id」のカーソルから取る。
+    assert.match(queries.at(-1).sql, /ORDER BY s\.updated_at DESC, s\.save_id DESC/);
+    const nextPage = await worker.fetch(new Request(`https://morn-save-saver.workers.dev/v1/admin/saves?project_id=game&cursor=${encodeURIComponent(`2026-09-23T00:00:00.000Z~${save.save_id}`)}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    assert.equal(nextPage.status, 200);
+    assert.deepEqual(queries.at(-1).args, ['game', '2026-09-23T00:00:00.000Z', '2026-09-23T00:00:00.000Z', save.save_id]);
+    const badCursor = await worker.fetch(new Request(`https://morn-save-saver.workers.dev/v1/admin/saves?project_id=game&cursor=${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    assert.equal(badCursor.status, 400);
     assert.equal(listed.save_id, save.save_id);
     assert.deepEqual(listed.screenshot, captured);
     const response = await worker.fetch(new Request(`https://morn-save-saver.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
