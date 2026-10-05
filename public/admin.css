@@ -1,30 +1,31 @@
 :root { --edge: 16px; --panel: 24px; --gap: 12px; --section: 20px; color-scheme: light; font: 16px/1.5 system-ui, sans-serif; background: #f3f5f8; color: #17202b; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: calc(2 * var(--edge)) var(--edge); }
-main { max-width: 920px; margin: auto; }
+main { max-width: 1100px; margin: auto; }
 h1 { font-size: 1.6rem; }
 .panel { margin: var(--section) 0; padding: var(--panel); border: 1px solid #d5dce5; border-radius: 12px; background: white; }
 .row { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; }
-#exact { margin-top: var(--section); }
-input { min-width: 220px; flex: 1; padding: 10px 12px; border: 1px solid #9da9b8; border-radius: 8px; font: inherit; }
+input, select { min-width: 220px; flex: 1; padding: 10px 12px; border: 1px solid #9da9b8; border-radius: 8px; font: inherit; }
 button, a { display: inline-block; padding: 10px 16px; border: 0; border-radius: 8px; background: #2957a4; color: white; font: inherit; cursor: pointer; text-decoration: none; }
 button:not(:disabled):hover, a:hover { filter: brightness(.9); }
-button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #7daafa; outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #7daafa; outline-offset: 2px; }
 #items { padding-left: 0; list-style: none; }
 #items li { padding: 12px 0; border-bottom: 1px solid #e2e7ed; }
 summary { cursor: pointer; border-radius: 6px; padding: calc(var(--gap) / 2); }
 summary:hover { background: #edf1f7; }
-.save-group > summary { display: flex; align-items: center; gap: var(--gap); }
+.save-group > summary { display: flex; align-items: center; gap: var(--gap); height: calc(200px * 9 / 16 + var(--gap)); }
 .save-group > summary::-webkit-details-marker { display: none; }
 .save-group > summary::before { content: '▸'; flex: 0 0 1em; }
 .save-group[open] > summary::before { content: '▾'; }
-.save-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.save-label small { display: block; margin-top: calc(var(--gap) / 2); color: #4b5868; }
+.save-info { flex: 1; min-width: 0; border-collapse: collapse; table-layout: fixed; font-size: .8rem; line-height: 1.3; }
+.save-info th { width: 6em; padding: 1px var(--gap) 1px 0; text-align: left; font-weight: 600; color: #4b5868; white-space: nowrap; }
+.save-info td { padding: 1px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.save-info tr + tr > * { border-top: 1px solid #edf1f7; }
 .save-group > summary button { flex-shrink: 0; margin-left: auto; padding: calc(var(--gap) / 2) var(--gap); }
 .fields { margin: var(--gap) 0 var(--gap) var(--panel); padding-left: var(--gap); border-left: 2px solid #e2e7ed; }
-.screenshot { display: grid; justify-items: start; gap: calc(var(--gap) / 2); width: 200px; flex: 0 0 200px; font-size: .75rem; color: #4b5868; }
+.screenshot { display: grid; place-items: center; width: 200px; aspect-ratio: 16 / 9; border-radius: 8px; background: #edf1f7; flex: 0 0 200px; font-size: .75rem; color: #4b5868; }
 .screenshot img { width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; object-fit: contain; }
-.screenshot time, .screenshot span { color: #4b5868; }
+.screenshot img + span { position: absolute; }
 .field { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr); gap: var(--gap); padding: calc(var(--gap) / 2); overflow-wrap: anywhere; }
 .field span { white-space: pre-wrap; }
 button:disabled { opacity: .6; cursor: wait; }
@@ -32,4 +33,4 @@ p { color: #4b5868; }
 [hidden] { display: none !important; }
 @media (max-width: 540px) { .panel { padding: var(--edge); } .row { align-items: stretch; flex-direction: column; } .row > * { width: 100%; } }
 
-@media (max-width: 700px) { .save-group > summary { flex-wrap: wrap; } .screenshot { width: 160px; flex-basis: 160px; } .save-label { flex-basis: calc(100% - 220px); } }
+@media (max-width: 700px) { .save-group > summary { flex-wrap: wrap; height: auto; } .screenshot { width: 160px; flex-basis: 160px; } .save-info { flex-basis: 100%; } }

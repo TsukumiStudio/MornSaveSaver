@@ -46,7 +46,7 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
   assert.equal(missing.status, 503);
   assert.equal((await worker.fetch(new Request('https://morn-save-saver.workers.dev/admin/'), missingEnv)).status, 503);
   const configured = { ACCESS_AUD: audience, DB: {}, ADMIN_LIMIT: { limit: async () => ({ success: true }) } };
-  for (const path of ['/admin/', '/admin/private', '/index.html', '/v1/admin', '/v1/admin/saves?project_id=game']) {
+  for (const path of ['/admin/', '/admin/private', '/index.html', '/v1/admin', '/v1/admin/saves?project_id=game', '/v1/admin/projects']) {
     const denied = await worker.fetch(new Request(`https://morn-save-saver.workers.dev${path}`), configured);
     assert.equal(denied.status, 403, path);
   }
@@ -59,7 +59,7 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
   const env = {
     ACCESS_AUD: audience,
     ADMIN_LIMIT: { limit: async () => ({ success: true }) },
-    DB: { prepare: () => ({ bind: () => ({ first: async () => detailSave, all: async () => ({ results: [save] }) }) }) },
+    DB: { prepare: sql => ({ all: async () => ({ results: sql.includes('GROUP BY') ? [{ project_id: 'game', saves: 1 }] : [save] }), bind: () => ({ first: async () => detailSave, all: async () => ({ results: [save] }) }) }) },
     ASSETS: { fetch: async () => new Response('<main>admin</main>', { headers: { 'content-type': 'text/html' } }) }
   };
   const previousFetch = globalThis.fetch;
@@ -72,6 +72,9 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
     assert.equal(page.headers.get('cache-control'), 'no-store');
     const cookiePage = await worker.fetch(new Request('https://morn-save-saver.workers.dev/admin/', { headers: { Cookie: `CF_Authorization=${token}` } }), env);
     assert.equal(cookiePage.status, 200);
+    const projects = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/projects', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    assert.equal(projects.status, 200);
+    assert.deepEqual((await projects.json()).items, [{ project_id: 'game', saves: 1 }]);
     const listing = await worker.fetch(new Request('https://morn-save-saver.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(listing.status, 200);
     const listed = (await listing.json()).items[0];

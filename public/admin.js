@@ -4,7 +4,6 @@ const more = document.querySelector('#more');
 const projectInput = document.querySelector('#project');
 let project = new URLSearchParams(location.search).get('project_id') || '';
 let cursor = null;
-projectInput.value = project;
 
 async function api(path) {
   let res;
@@ -65,25 +64,17 @@ function showRow(row, initialSave = null) {
   group.id = `save-${row.save_id}`;
   group.className = 'save-group';
   const summary = document.createElement('summary');
-  const label = document.createElement('span');
-  label.className = 'save-label';
-  const id = document.createElement('strong');
-  id.textContent = row.save_id;
-  const meta = document.createElement('small');
-  meta.textContent = `user ${row.user_id} · revision ${row.revision} · ${japanTime(row.updated_at)}`;
-  label.append(id, meta);
   const download = document.createElement('button');
   download.type = 'button';
   download.textContent = 'JSONで保存';
   const fields = document.createElement('div');
   fields.className = 'fields';
   fields.setAttribute('aria-live', 'polite');
+  // 1件の高さは画像の高さに揃え、画像以外の情報は右の表へ並べる。
   const screenshot = document.createElement('span');
   screenshot.className = 'screenshot';
+  let captured = '—';
   if (row.screenshot) {
-    const time = document.createElement('time');
-    time.dateTime = row.screenshot.captured_at;
-    time.textContent = `撮影: ${japanTime(row.screenshot.captured_at)}`;
     const image = document.createElement('img');
     image.src = row.screenshot.url;
     image.alt = '添付スクリーンショット';
@@ -93,9 +84,24 @@ function showRow(row, initialSave = null) {
     state.textContent = '画像を読み込み中…';
     image.addEventListener('load', () => state.remove(), { once: true });
     image.addEventListener('error', () => { image.hidden = true; state.textContent = '画像を表示できません'; }, { once: true });
-    screenshot.append(image, time, state);
+    screenshot.append(image, state);
+    captured = document.createElement('time');
+    captured.dateTime = row.screenshot.captured_at;
+    captured.textContent = japanTime(row.screenshot.captured_at);
   } else {
     screenshot.textContent = '画像なし';
+  }
+  const table = document.createElement('table');
+  table.className = 'save-info';
+  for (const [name, value] of [['Save ID', row.save_id], ['User ID', row.user_id], ['Revision', String(row.revision)],
+    ['更新', japanTime(row.updated_at)], ['撮影', captured]]) {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.textContent = name;
+    const td = document.createElement('td');
+    if (typeof value === 'string') td.textContent = value; else td.append(value);
+    tr.append(th, td);
+    table.append(tr);
   }
   let pending;
   let save = initialSave;
@@ -132,7 +138,7 @@ function showRow(row, initialSave = null) {
     } catch (error) { report(error); }
     finally { download.disabled = false; }
   });
-  summary.append(screenshot, label, download);
+  summary.append(screenshot, table, download);
   group.append(summary, fields);
   li.append(group);
   items.append(li);
@@ -151,21 +157,25 @@ async function loadPage(reset = false) {
     status.textContent = `${items.children.length}件を表示しました。`;
   } catch (error) { report(error); }
 }
-async function openSave(saveId) {
-  status.textContent = '読み込み中…';
+async function loadProjects() {
   try {
-    const save = await api(`/v1/admin/saves/${encodeURIComponent(saveId)}`);
-    const group = showRow(save, save);
-    group.open = true;
-    group.scrollIntoView({ block: 'nearest' });
-    status.textContent = '';
+    const result = await api('/v1/admin/projects');
+    const options = result.items.map(item => {
+      const option = document.createElement('option');
+      option.value = item.project_id;
+      option.textContent = `${item.project_id}（${item.saves}件）`;
+      return option;
+    });
+    projectInput.replaceChildren(...options);
+    if (!result.items.some(item => item.project_id === project)) project = result.items[0]?.project_id || '';
+    projectInput.value = project;
+    if (project) loadPage(true); else status.textContent = 'セーブのあるプロジェクトがありません。';
   } catch (error) { report(error); }
 }
-document.querySelector('#search').addEventListener('submit', event => {
-  event.preventDefault(); project = projectInput.value; loadPage(true);
-});
-document.querySelector('#exact').addEventListener('submit', event => {
-  event.preventDefault(); const id = document.querySelector('#save-id').value.trim(); if (id) openSave(id);
+projectInput.addEventListener('change', () => {
+  project = projectInput.value;
+  history.replaceState(null, '', `?project_id=${encodeURIComponent(project)}`);
+  loadPage(true);
 });
 more.addEventListener('click', () => loadPage(false));
-if (project) loadPage(true);
+loadProjects();

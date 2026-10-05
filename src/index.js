@@ -134,6 +134,11 @@ async function admin(req, env, url) {
   const denied = await adminAccess(req, env);
   if (denied) return denied;
   if (req.method !== 'GET') return fail(405, 'method_not_allowed');
+  if (url.pathname === '/v1/admin/projects') {
+    // 管理画面のプロジェクト選択に使う。セーブを1件以上持つものだけを返す。
+    const rows = await env.DB.prepare('SELECT u.project_id, count(*) AS saves FROM saves s JOIN users u ON u.user_id=s.user_id GROUP BY u.project_id ORDER BY u.project_id').all();
+    return json({ items: rows.results });
+  }
   if (url.pathname === '/v1/admin/saves') {
     const projectId = url.searchParams.get('project_id');
     const cursor = url.searchParams.get('cursor');
