@@ -15,7 +15,7 @@ let persistDir;
 let serverOutput = '';
 
 before(async () => {
-  stateDir = await mkdtemp(join(tmpdir(), 'mornsavesaver-'));
+  stateDir = await mkdtemp(join(tmpdir(), 'gmornsaveserver-'));
   persistDir = join(stateDir, 'state');
   const migration = spawnSync(process.execPath, ['node_modules/wrangler/bin/wrangler.js', 'd1', 'migrations', 'apply', 'morn-save-saver', '--local', '--persist-to', persistDir], { cwd: process.cwd(), encoding: 'utf8' });
   if (migration.status !== 0) throw new Error(migration.stderr || migration.stdout);

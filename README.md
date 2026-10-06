@@ -1,6 +1,8 @@
-# MornSaveSaver
+# GMornSaveServer
 
-稼働先: https://morn-save-saver.pikapikan0526.workers.dev （管理画面は `/admin/`）。ゲームからの利用例は [GMornSaveSaver](https://github.com/TsukumiStudio/GMornSaveSaver) を参照。
+稼働先: https://gmorn-save-server.pikapikan0526.workers.dev （管理画面は `/admin/`）。ゲームからの利用例は [GMornSave](https://github.com/TsukumiStudio/GMornSave) のクラウド保存（GMornSaveCloud）を参照。
+
+2026-10-07 に MornSaveSaver（Worker `morn-save-saver`）から改名した。D1 は名前を変えられないので `morn-save-saver` のまま使う。以下の `wrangler d1` の引数がその名前なのはそのため。
 
 Cloudflare Workers + D1 の小さなJSONセーブ保管APIと管理ページです。セーブはユーザーごとに1件だけ保持し、revisionが大きい書き込みだけを保存します。
 

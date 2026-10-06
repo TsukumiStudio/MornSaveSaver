@@ -1,5 +1,5 @@
 {
-  "name": "morn-save-saver",
+  "name": "gmorn-save-server",
   "version": "1.0.0",
   "scripts": {
     "test": "node --test",
