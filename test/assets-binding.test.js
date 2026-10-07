@@ -16,7 +16,7 @@ test('serves admin HTML through the real Assets binding without canonical redire
   const productionConfig = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
   assert.equal(productionConfig.assets.html_handling, 'none');
 
-  stateDir = await mkdtemp(join(tmpdir(), 'gmornsaveserver-assets-'));
+  stateDir = await mkdtemp(join(tmpdir(), 'mornsaveserver-assets-'));
   server = spawn(process.execPath, [
     'node_modules/wrangler/bin/wrangler.js', 'dev', '--config', 'test/assets-probe.wrangler.jsonc', '--local',
     '--port', String(port), '--persist-to', join(stateDir, 'state'), '--show-interactive-dev-session=false'
@@ -40,5 +40,5 @@ test('serves admin HTML through the real Assets binding without canonical redire
   assert.ok(response, `Wrangler did not start:\n${output}`);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('location'), null);
-  assert.match(await response.text(), /GMornSaveServer 管理/);
+  assert.match(await response.text(), /MornSaveServer 管理/);
 });

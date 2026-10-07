@@ -42,15 +42,15 @@ test('validates Access signature, issuer, audience, exp, and nbf', async () => {
 
 test('protects admin HTML and API while leaving no configuration bypass', async () => {
   const missingEnv = { DB: {}, ADMIN_LIMIT: { limit: async () => ({ success: true }) } };
-  const missing = await worker.fetch(new Request('https://gmorn-save-server.workers.dev/v1/admin/saves?project_id=game'), missingEnv);
+  const missing = await worker.fetch(new Request('https://morn-save-server.workers.dev/v1/admin/saves?project_id=game'), missingEnv);
   assert.equal(missing.status, 503);
-  assert.equal((await worker.fetch(new Request('https://gmorn-save-server.workers.dev/admin/'), missingEnv)).status, 503);
+  assert.equal((await worker.fetch(new Request('https://morn-save-server.workers.dev/admin/'), missingEnv)).status, 503);
   const configured = { ACCESS_AUD: audience, DB: {}, ADMIN_LIMIT: { limit: async () => ({ success: true }) } };
   for (const path of ['/admin/', '/admin/private', '/index.html', '/v1/admin', '/v1/admin/saves?project_id=game', '/v1/admin/projects', `/v1/admin/users/${crypto.randomUUID()}/history`]) {
-    const denied = await worker.fetch(new Request(`https://gmorn-save-server.workers.dev${path}`), configured);
+    const denied = await worker.fetch(new Request(`https://morn-save-server.workers.dev${path}`), configured);
     assert.equal(denied.status, 403, path);
   }
-  const malformed = await worker.fetch(new Request('https://gmorn-save-server.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': 'not.a.jwt' } }), configured);
+  const malformed = await worker.fetch(new Request('https://morn-save-server.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': 'not.a.jwt' } }), configured);
   assert.equal(malformed.status, 403);
 
   const captured = { url: 'https://drop.tsukumistudio.com/2026/09/23/0123456789abcdef0123456789abcdef.jpg', captured_at: '2026-09-23T00:00:00Z' };
@@ -67,33 +67,33 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
   globalThis.fetch = certFetcher;
   try {
     const token = await makeToken();
-    const page = await worker.fetch(new Request('https://gmorn-save-server.workers.dev/admin/', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const page = await worker.fetch(new Request('https://morn-save-server.workers.dev/admin/', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(page.status, 200);
     assert.match(await page.text(), /admin/);
     assert.equal(page.headers.get('cache-control'), 'no-store');
-    const cookiePage = await worker.fetch(new Request('https://gmorn-save-server.workers.dev/admin/', { headers: { Cookie: `CF_Authorization=${token}` } }), env);
+    const cookiePage = await worker.fetch(new Request('https://morn-save-server.workers.dev/admin/', { headers: { Cookie: `CF_Authorization=${token}` } }), env);
     assert.equal(cookiePage.status, 200);
-    const projects = await worker.fetch(new Request('https://gmorn-save-server.workers.dev/v1/admin/projects', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const projects = await worker.fetch(new Request('https://morn-save-server.workers.dev/v1/admin/projects', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(projects.status, 200);
     assert.deepEqual((await projects.json()).items, [{ project_id: 'game', saves: 1 }]);
-    const historyList = await worker.fetch(new Request(`https://gmorn-save-server.workers.dev/v1/admin/users/${save.user_id}/history`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const historyList = await worker.fetch(new Request(`https://morn-save-server.workers.dev/v1/admin/users/${save.user_id}/history`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(historyList.status, 200);
     assert.equal((await historyList.json()).items.length, 1);
-    const badHistory = await worker.fetch(new Request('https://gmorn-save-server.workers.dev/v1/admin/users/not-a-uuid/history', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const badHistory = await worker.fetch(new Request('https://morn-save-server.workers.dev/v1/admin/users/not-a-uuid/history', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(badHistory.status, 400);
-    const listing = await worker.fetch(new Request('https://gmorn-save-server.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const listing = await worker.fetch(new Request('https://morn-save-server.workers.dev/v1/admin/saves?project_id=game', { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(listing.status, 200);
     const listed = (await listing.json()).items[0];
     // 一覧は最終更新が新しい順。続きは「更新日時~save_id」のカーソルから取る。
     assert.match(queries.at(-1).sql, /ORDER BY s\.updated_at DESC, s\.save_id DESC/);
-    const nextPage = await worker.fetch(new Request(`https://gmorn-save-server.workers.dev/v1/admin/saves?project_id=game&cursor=${encodeURIComponent(`2026-09-23T00:00:00.000Z~${save.save_id}`)}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const nextPage = await worker.fetch(new Request(`https://morn-save-server.workers.dev/v1/admin/saves?project_id=game&cursor=${encodeURIComponent(`2026-09-23T00:00:00.000Z~${save.save_id}`)}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(nextPage.status, 200);
     assert.deepEqual(queries.at(-1).args, ['game', '2026-09-23T00:00:00.000Z', '2026-09-23T00:00:00.000Z', save.save_id]);
-    const badCursor = await worker.fetch(new Request(`https://gmorn-save-server.workers.dev/v1/admin/saves?project_id=game&cursor=${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const badCursor = await worker.fetch(new Request(`https://morn-save-server.workers.dev/v1/admin/saves?project_id=game&cursor=${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(badCursor.status, 400);
     assert.equal(listed.save_id, save.save_id);
     assert.deepEqual(listed.screenshot, captured);
-    const response = await worker.fetch(new Request(`https://gmorn-save-server.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const response = await worker.fetch(new Request(`https://morn-save-server.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal(response.status, 200);
     const detail = await response.json();
     assert.deepEqual(detail.data, { level: 2 });
@@ -101,7 +101,7 @@ test('protects admin HTML and API while leaving no configuration bypass', async 
     assert.match(response.headers.get('content-security-policy'), /img-src 'self' https:\/\/drop\.tsukumistudio\.com/);
     assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
     detailSave = { ...save, screenshot: null };
-    const empty = await worker.fetch(new Request(`https://gmorn-save-server.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
+    const empty = await worker.fetch(new Request(`https://morn-save-server.workers.dev/v1/admin/saves/${save.save_id}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }), env);
     assert.equal((await empty.json()).screenshot, null);
   } finally {
     globalThis.fetch = previousFetch;
